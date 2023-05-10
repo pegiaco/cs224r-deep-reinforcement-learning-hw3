@@ -71,16 +71,9 @@ class IQLAgent(DQNAgent):
         # HINT: Access critic using self.exploitation_critic 
         # (critic trained in the offline setting)
         ### YOUR CODE HERE ###
-        # Estimate the value function for the current and next state
-        curr_v = self.get_qvals(self.exploitation_critic, ob_no, ac_na, use_v=True)
-        next_v = self.get_qvals(self.exploitation_critic, next_ob_no, use_v=True)
-
-        # Estimate the TD target and the advantage for the current state
-        td_target = re_n + self.gamma * next_v * (1 - terminal_n)
-        advantage = td_target - curr_v
-
-        # Convert advantage to numpy array and return
-        advantage = ptu.to_numpy(advantage).squeeze()
+        q_val = self.get_qvals(self.exploitation_critic, ob_no, ac_na, use_v=False)
+        v_val = self.get_qvals(self.exploitation_critic, ob_no, use_v=True)
+        advantage = q_val - v_val
         return advantage
         ### YOUR CODE HERE ###
         

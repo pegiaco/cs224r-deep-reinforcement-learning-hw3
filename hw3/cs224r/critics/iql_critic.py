@@ -47,6 +47,7 @@ class IQLCritic(BaseCritic):
         # HINT: Define using same hparams as Q_net, but adjust output dimensions
         ### YOUR CODE HERE ###
         self.v_net = network_initializer(self.ob_dim, 1)
+        self.v_net.to(ptu.device)
         ### YOUR CODE HERE ###
 
         self.v_optimizer = self.optimizer_spec.constructor(
@@ -68,7 +69,7 @@ class IQLCritic(BaseCritic):
         # aggregate it later
         ### YOUR CODE HERE ###
         tau = self.iql_expectile
-        loss = torch.where(diff >= 0, (1 - tau) * diff, tau * diff)
+        loss = torch.where(diff >= 0, (1 - tau) * diff**2, tau * diff**2).mean()
         return loss
         ### YOUR CODE HERE ###
 
@@ -86,15 +87,8 @@ class IQLCritic(BaseCritic):
         # passing in the difference between the computed targets and predictions
         ### YOUR CODE HERE ###
         # Compute target values for the value function
-        with torch.no_grad():
-            target_q_values = self.q_net_target(ob_no)
-            target_v_values, _ = torch.sort(target_q_values, dim=1, descending=True)
-            target_v_values = target_v_values[:, int(self.iql_expectile * self.ac_dim)].unsqueeze(-1)
-            
-        # Compute the loss between predicted and target values
-        predicted_v_values = self.v_net(ob_no).gather(1, ac_na.unsqueeze(-1)).squeeze(-1)
-        value_diff = predicted_v_values - target_v_values
-        value_loss = self.expectile_loss(value_diff)
+        diff = self.q_net_target(ob_no).gather(1, ac_na.unsqueeze(1)) - self.v_net(ob_no)
+        value_loss = self.expectile_loss(diff)
         ### YOUR CODE HERE ###
         
 
@@ -124,25 +118,21 @@ class IQLCritic(BaseCritic):
         # HINT: Note that if the next state is terminal, 
         # its target reward value needs to be adjusted.
         ### YOUR CODE HERE ###
-        # Compute current estimate of q values for each action
-        curr_q_values = self.q_net(ob_no)
-        curr_q_values = curr_q_values.gather(1, ac_na.unsqueeze(1)).squeeze(1)
 
-        # Compute target v value for next state using target v net
-        next_v_values = self.v_net(next_ob_no)
-        next_q_values = self.q_net_target(next_ob_no)
+        # Compute target values
+        target_values = self.v_net(next_ob_no)
+        target_values = target_values.reshape(-1)
 
-        if self.double_q:
-            next_q_values_online = self.q_net(next_ob_no)
-            next_actions = next_q_values_online.max(dim=1)[1]
-            next_q_values = next_q_values.gather(1, next_actions.unsqueeze(1)).squeeze(1)
-        else:
-            next_q_values = next_q_values.max(dim=1)[0]
+        # Compute target q values
+        target_q_values = reward_n + self.gamma * target_values * (1 - terminal_n)
+        target_q_values = target_q_values.reshape(-1, 1)
 
-        target_v_values = next_v_values + reward_n + self.gamma * next_q_values * (1 - terminal_n)
+        # Compute q values
+        q_values = self.q_net(ob_no).gather(1, ac_na.unsqueeze(1))
 
-        # Compute loss for updating Q_net parameters
-        loss = self.mse_loss(curr_q_values, target_v_values.detach())
+        # Compute loss
+        loss = self.mse_loss(q_values, target_q_values)
+
         ### YOUR CODE HERE ###
         self.optimizer.zero_grad()
         loss.backward()
