@@ -69,7 +69,7 @@ class IQLCritic(BaseCritic):
         # aggregate it later
         ### YOUR CODE HERE ###
         tau = self.iql_expectile
-        loss = torch.where(diff >= 0, (1 - tau) * diff**2, tau * diff**2).mean()
+        loss = torch.where(diff <= 0, (1 - tau) * diff**2, tau * diff**2).mean()
         return loss
         ### YOUR CODE HERE ###
 
